@@ -1,0 +1,1 @@
+# Equipment_Operating_Rate
