@@ -1,0 +1,32 @@
+name: Scheduled Utilization Pipeline
+
+on:
+  schedule:
+    # GitHub Actionsのschedule triggerは常にUTC。
+    # JST 0:00 = 前日 UTC 15:00 / JST 12:00 = UTC 3:00 のため "0 3,15 * * *" とする。
+    - cron: "0 3,15 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run-pipeline:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python virtual environment
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ".venv")) {
+            python -m venv .venv
+          }
+          .venv\Scripts\python.exe -m pip install --upgrade pip
+          .venv\Scripts\python.exe -m pip install -r requirements.txt
+
+      - name: Run ingestion pipeline (CSV generation + SSMS load)
+        shell: pwsh
+        run: .venv\Scripts\python.exe src\scheduling\run_ingestion.py
+
+      - name: Run reporting refresh (utilization consistency check)
+        shell: pwsh
+        run: .venv\Scripts\python.exe src\scheduling\run_reporting_refresh.py
