@@ -15,7 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python virtual environment
-        shell: pwsh
+        shell: powershell
         run: |
           if (-not (Test-Path ".venv")) {
             python -m venv .venv
@@ -24,9 +24,9 @@ jobs:
           .venv\Scripts\python.exe -m pip install -r requirements.txt
 
       - name: Run ingestion pipeline (CSV generation + SSMS load)
-        shell: pwsh
+        shell: powershell
         run: .venv\Scripts\python.exe src\scheduling\run_ingestion.py
 
       - name: Run reporting refresh (utilization consistency check)
-        shell: pwsh
+        shell: powershell
         run: .venv\Scripts\python.exe src\scheduling\run_reporting_refresh.py
