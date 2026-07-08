@@ -24,5 +24,5 @@ def get_connection() -> pyodbc.Connection:
             continue
 
     raise ConnectionError(
-        f"SSMSへの接続に失敗しました(試行したドライバ: {ODBC_DRIVER_CANDIDATES})"
+        f"SSMSへの接続に失敗しました(試行したドライバ: {ODBC_DRIVER_CANDIDATES}): {last_error}"
     ) from last_error
