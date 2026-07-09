@@ -4,7 +4,15 @@ from src.utilization.models import UtilizationRow
 
 def test_main_returns_zero_when_utilization_query_succeeds(monkeypatch):
     fake_rows = [
-        UtilizationRow(machine_name="A", machine_number=1, actual_seconds=100, planned_seconds=86400, utilization_rate=0.1)
+        UtilizationRow(
+            machine_name="A",
+            machine_number=1,
+            actual_seconds=100,
+            planned_seconds=86400,
+            utilization_rate=0.1,
+            processed_count=1,
+            expected_utilization_rate=1.39,
+        )
     ]
     monkeypatch.setattr(run_reporting_refresh, "get_daily_utilization", lambda target_date: fake_rows)
 

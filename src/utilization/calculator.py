@@ -18,14 +18,16 @@ MONDAY_WEEKDAY = 0
 
 
 def get_daily_utilization(target_date: date, connection=None) -> list[UtilizationRow]:
-    """対象日の号機別(25件)日別稼働率を算出する(BR-2)。"""
+    """対象日の号機別(25件)日別稼働率(実績+想定)を算出する(BR-2)。"""
     planned_seconds = get_planned_seconds(target_date)
     aggregates = _fetch_aggregates_for_range(target_date, target_date + timedelta(days=1), connection)
 
     rows = []
     for machine_name in MACHINE_TYPES:
+        standard_seconds = STANDARD_MINUTES[machine_name] * 60
         for unit_number in UNIT_NUMBERS:
-            actual_seconds, _ = aggregates.get((machine_name, unit_number), (0, 0))
+            actual_seconds, processed_count = aggregates.get((machine_name, unit_number), (0, 0))
+            expected_seconds = processed_count * standard_seconds
             rows.append(
                 UtilizationRow(
                     machine_name=machine_name,
@@ -33,6 +35,8 @@ def get_daily_utilization(target_date: date, connection=None) -> list[Utilizatio
                     actual_seconds=actual_seconds,
                     planned_seconds=planned_seconds,
                     utilization_rate=_safe_rate(actual_seconds, planned_seconds),
+                    processed_count=processed_count,
+                    expected_utilization_rate=_safe_rate(expected_seconds, planned_seconds),
                 )
             )
     return rows
@@ -68,9 +72,9 @@ def get_weekly_utilization(week_start: date, connection=None) -> list[WeeklyUtil
 
 
 def get_monthly_utilization(year: int, month: int, connection=None) -> list[UtilizationRow]:
-    """対象月の号機別(25件)月別稼働率を算出する(BR-6)。日別集計を月内で積み上げる。"""
+    """対象月の号機別(25件)月別稼働率(実績+想定)を算出する(BR-6)。日別集計を月内で積み上げる。"""
     days_in_month = _days_in_month(year, month)
-    totals: dict[tuple[str, int], list[int]] = {(m, u): [0, 0] for m in MACHINE_TYPES for u in UNIT_NUMBERS}
+    totals: dict[tuple[str, int], list[int]] = {(m, u): [0, 0, 0] for m in MACHINE_TYPES for u in UNIT_NUMBERS}
 
     own_connection = connection or get_connection()
     try:
@@ -80,38 +84,50 @@ def get_monthly_utilization(year: int, month: int, connection=None) -> list[Util
                 key = (row.machine_name, row.machine_number)
                 totals[key][0] += row.actual_seconds
                 totals[key][1] += row.planned_seconds
+                totals[key][2] += row.processed_count
     finally:
         if connection is None:
             own_connection.close()
 
-    return [
-        UtilizationRow(
-            machine_name=machine_name,
-            machine_number=unit_number,
-            actual_seconds=actual_seconds,
-            planned_seconds=planned_seconds,
-            utilization_rate=_safe_rate(actual_seconds, planned_seconds),
+    rows = []
+    for (machine_name, unit_number), (actual_seconds, planned_seconds, processed_count) in totals.items():
+        expected_seconds = processed_count * STANDARD_MINUTES[machine_name] * 60
+        rows.append(
+            UtilizationRow(
+                machine_name=machine_name,
+                machine_number=unit_number,
+                actual_seconds=actual_seconds,
+                planned_seconds=planned_seconds,
+                utilization_rate=_safe_rate(actual_seconds, planned_seconds),
+                processed_count=processed_count,
+                expected_utilization_rate=_safe_rate(expected_seconds, planned_seconds),
+            )
         )
-        for (machine_name, unit_number), (actual_seconds, planned_seconds) in totals.items()
-    ]
+    return rows
 
 
 def aggregate_by_machine_type(rows: list[UtilizationRow]) -> list[MachineTypeUtilizationRow]:
     """号機別のUtilizationRowを加工機タイプ単位(5号機分)に合算する(BR-8)。"""
-    totals: dict[str, list[int]] = {m: [0, 0] for m in MACHINE_TYPES}
+    totals: dict[str, list[int]] = {m: [0, 0, 0] for m in MACHINE_TYPES}
     for row in rows:
         totals[row.machine_name][0] += row.actual_seconds
         totals[row.machine_name][1] += row.planned_seconds
+        totals[row.machine_name][2] += row.processed_count
 
-    return [
-        MachineTypeUtilizationRow(
-            machine_name=machine_name,
-            actual_seconds=actual_seconds,
-            planned_seconds=planned_seconds,
-            utilization_rate=_safe_rate(actual_seconds, planned_seconds),
+    results = []
+    for machine_name, (actual_seconds, planned_seconds, processed_count) in totals.items():
+        expected_seconds = processed_count * STANDARD_MINUTES[machine_name] * 60
+        results.append(
+            MachineTypeUtilizationRow(
+                machine_name=machine_name,
+                actual_seconds=actual_seconds,
+                planned_seconds=planned_seconds,
+                utilization_rate=_safe_rate(actual_seconds, planned_seconds),
+                processed_count=processed_count,
+                expected_utilization_rate=_safe_rate(expected_seconds, planned_seconds),
+            )
         )
-        for machine_name, (actual_seconds, planned_seconds) in totals.items()
-    ]
+    return results
 
 
 def aggregate_weekly_by_machine_type(rows: list[WeeklyUtilizationRow]) -> list[MachineTypeWeeklyUtilizationRow]:

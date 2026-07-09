@@ -14,7 +14,8 @@ def _mock_connection(monkeypatch):
 
 def test_get_daily_utilization_returns_25_rows_with_expected_defaults(monkeypatch):
     tuesday = date(2026, 7, 7)
-    monkeypatch.setattr(calculator, "fetch_range_aggregates", lambda conn, start, end: {("A", 1): (1200, 1)})
+    # A-1号機: 2件処理、実加工1200秒(標準20分=1200秒 -> 期待2*1200=2400秒)
+    monkeypatch.setattr(calculator, "fetch_range_aggregates", lambda conn, start, end: {("A", 1): (1200, 2)})
 
     rows = calculator.get_daily_utilization(tuesday)
 
@@ -23,10 +24,14 @@ def test_get_daily_utilization_returns_25_rows_with_expected_defaults(monkeypatc
     assert target.actual_seconds == 1200
     assert target.planned_seconds == 86400
     assert target.utilization_rate == round(1200 / 86400 * 100, 2)
+    assert target.processed_count == 2
+    assert target.expected_utilization_rate == round(2 * 1200 / 86400 * 100, 2)
 
     other = next(r for r in rows if r.machine_name == "B" and r.machine_number == 2)
     assert other.actual_seconds == 0
     assert other.utilization_rate == 0.0
+    assert other.processed_count == 0
+    assert other.expected_utilization_rate == 0.0
 
 
 def test_get_daily_utilization_sunday_avoids_division_by_zero(monkeypatch):
@@ -65,7 +70,13 @@ def test_get_weekly_utilization_computes_actual_and_expected_rates(monkeypatch):
 
 def test_get_monthly_utilization_sums_daily_rows(monkeypatch):
     fake_row = UtilizationRow(
-        machine_name="A", machine_number=1, actual_seconds=100, planned_seconds=86400, utilization_rate=0.12
+        machine_name="A",
+        machine_number=1,
+        actual_seconds=100,
+        planned_seconds=86400,
+        utilization_rate=0.12,
+        processed_count=1,
+        expected_utilization_rate=1.39,
     )
 
     def _fake_get_daily_utilization(target_date, connection=None):
@@ -79,14 +90,33 @@ def test_get_monthly_utilization_sums_daily_rows(monkeypatch):
     target = next(r for r in rows if r.machine_name == "A" and r.machine_number == 1)
     assert target.actual_seconds == 100 * 28
     assert target.planned_seconds == 86400 * 28
+    assert target.processed_count == 1 * 28
+    expected_seconds = 28 * 20 * 60  # processed_count合算(28) x 標準加工時間(A=20分)
+    assert target.expected_utilization_rate == round(expected_seconds / (86400 * 28) * 100, 2)
 
 
 def test_aggregate_by_machine_type_sums_five_units():
     rows = [
-        UtilizationRow(machine_name="A", machine_number=n, actual_seconds=100, planned_seconds=86400, utilization_rate=0.1)
+        UtilizationRow(
+            machine_name="A",
+            machine_number=n,
+            actual_seconds=100,
+            planned_seconds=86400,
+            utilization_rate=0.1,
+            processed_count=1,
+            expected_utilization_rate=1.39,
+        )
         for n in range(1, 6)
     ] + [
-        UtilizationRow(machine_name="B", machine_number=n, actual_seconds=200, planned_seconds=86400, utilization_rate=0.2)
+        UtilizationRow(
+            machine_name="B",
+            machine_number=n,
+            actual_seconds=200,
+            planned_seconds=86400,
+            utilization_rate=0.2,
+            processed_count=2,
+            expected_utilization_rate=4.17,
+        )
         for n in range(1, 6)
     ]
 
@@ -97,6 +127,9 @@ def test_aggregate_by_machine_type_sums_five_units():
     assert machine_a.actual_seconds == 500
     assert machine_a.planned_seconds == 86400 * 5
     assert machine_a.utilization_rate == round(500 / (86400 * 5) * 100, 2)
+    assert machine_a.processed_count == 5
+    expected_seconds = 5 * 20 * 60  # processed_count合算(5) x 標準加工時間(A=20分)
+    assert machine_a.expected_utilization_rate == round(expected_seconds / (86400 * 5) * 100, 2)
 
 
 def test_aggregate_weekly_by_machine_type_sums_five_units():

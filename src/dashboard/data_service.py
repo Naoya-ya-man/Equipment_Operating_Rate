@@ -79,6 +79,52 @@ def build_monthly_trend(end_date: date, num_months: int, granularity: Granularit
     return pd.DataFrame(records)
 
 
+def build_daily_comparison(target_date: date, granularity: Granularity = "unit") -> pd.DataFrame:
+    """対象日の実績 vs 想定(理論値)の比較表を構築する。"""
+    rows = get_daily_utilization(target_date)
+    if granularity == "machine_type":
+        rows = aggregate_by_machine_type(rows)
+    return _rows_to_comparison_dataframe(rows)
+
+
+def build_weekly_comparison(week_start: date, granularity: Granularity = "unit") -> pd.DataFrame:
+    """対象週(月曜始まり)の実績 vs 想定(理論値)の比較表を構築する。"""
+    rows = get_weekly_utilization(week_start)
+    if granularity == "machine_type":
+        rows = aggregate_weekly_by_machine_type(rows)
+    return _rows_to_comparison_dataframe(rows)
+
+
+def build_monthly_comparison(year: int, month: int, granularity: Granularity = "unit") -> pd.DataFrame:
+    """対象月の実績 vs 想定(理論値)の比較表を構築する。"""
+    rows = get_monthly_utilization(year, month)
+    if granularity == "machine_type":
+        rows = aggregate_by_machine_type(rows)
+    return _rows_to_comparison_dataframe(rows)
+
+
+def _rows_to_comparison_dataframe(rows) -> pd.DataFrame:
+    """UtilizationRow/WeeklyUtilizationRow(またはそれらの加工機タイプ集計版)を、
+    実績・想定(理論値)・差分を持つ比較用DataFrameに変換する。
+    """
+    records = []
+    for row in rows:
+        actual_rate = getattr(row, "actual_utilization_rate", None)
+        if actual_rate is None:
+            actual_rate = row.utilization_rate
+        records.append(
+            {
+                "series": _series_label(row.machine_name, getattr(row, "machine_number", None)),
+                "machine_name": row.machine_name,
+                "processed_count": row.processed_count,
+                "actual_rate": actual_rate,
+                "expected_rate": row.expected_utilization_rate,
+                "diff": round(actual_rate - row.expected_utilization_rate, 2),
+            }
+        )
+    return pd.DataFrame(records)
+
+
 def _series_label(machine_name: str, machine_number: Optional[int]) -> str:
     if machine_number is None:
         return machine_name

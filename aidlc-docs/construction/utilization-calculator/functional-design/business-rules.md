@@ -8,6 +8,7 @@
 
 ## BR-2: 日別稼働率
 - 対象日の `[Processing_Start_Time が対象日]` のレコードを号機ごとに集計し、`Sum_DateTime` の合計を実加工時間(秒)とする
+- 【2026-07-09追加】日別・月別についても、週別(BR-5)と同様に想定稼働率（加工件数×標準加工時間÷計画時間×100）を算出し、`UtilizationRow`に`processed_count`/`expected_utilization_rate`として持たせる。実績と想定を比較できるようにするため（ダッシュボードの比較表で使用）
 - `utilization_rate = actual_seconds / planned_seconds * 100`（`planned_seconds = 0` の場合は0.0とする、日曜日等）
 - 加工機タイプ(A〜E) × 号機(1〜5) = 25通り全てについて行を生成する（データがない号機は `actual_seconds = 0`）
 

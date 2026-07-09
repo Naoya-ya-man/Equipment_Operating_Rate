@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 _WORKSPACE_ROOT = str(Path(__file__).resolve().parents[2])
@@ -30,7 +30,14 @@ from src.dashboard.config import (
     MIN_MONTHLY_MONTHS,
     MIN_WEEKLY_WEEKS,
 )
-from src.dashboard.data_service import build_daily_trend, build_monthly_trend, build_weekly_trend
+from src.dashboard.data_service import (
+    build_daily_comparison,
+    build_daily_trend,
+    build_monthly_comparison,
+    build_monthly_trend,
+    build_weekly_comparison,
+    build_weekly_trend,
+)
 
 st.set_page_config(page_title="設備稼働率監視ボード", layout="wide")
 st.title("設備稼働率監視ボード")
@@ -67,6 +74,33 @@ try:
         st.info("データがありません")
     else:
         st.dataframe(monthly_df.pivot(index="year_month", columns="series", values="utilization_rate"))
+
+    st.subheader("実績 vs 想定(理論値)の比較表")
+    st.caption("想定(理論値) = 加工件数 × 標準加工時間 ÷ 計画時間 × 100。実績との差が大きい場合は生成量やデータ欠損を確認する目安になる。")
+    period_label = st.radio("比較する期間", ["直近1日", "直近1週間", "直近1ヶ月"], horizontal=True)
+
+    if period_label == "直近1日":
+        comparison_df = build_daily_comparison(today, granularity)
+    elif period_label == "直近1週間":
+        comparison_df = build_weekly_comparison(today - timedelta(days=today.weekday()), granularity)
+    else:
+        comparison_df = build_monthly_comparison(today.year, today.month, granularity)
+
+    if comparison_df.empty:
+        st.info("データがありません")
+    else:
+        st.dataframe(
+            comparison_df.rename(
+                columns={
+                    "series": "系列",
+                    "processed_count": "加工件数",
+                    "actual_rate": "実績稼働率(%)",
+                    "expected_rate": "想定稼働率(%)",
+                    "diff": "差分(実績-想定)",
+                }
+            ).drop(columns=["machine_name"]),
+            hide_index=True,
+        )
 
 except Exception as exc:  # noqa: BLE001 - アプリ全体のクラッシュを防ぎ、エラーをユーザーに通知する(BR-9関連)
     st.error(f"データの取得中にエラーが発生しました: {exc}")
