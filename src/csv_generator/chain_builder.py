@@ -1,4 +1,10 @@
-"""製品チェーン生成ロジック(BR-5, BR-6, BR-7, BR-8, BR-9, BR-10)。"""
+"""製品チェーン生成ロジック(BR-5, BR-6, BR-7, BR-8, BR-9, BR-10)。
+
+各加工機タイプ(A〜E)は5号機が並行して稼働できるため、号機ごとに
+「次に空く時刻」を個別に管理し、複数の製品チェーンが同時進行できるようにする。
+(1本のラインのように直列にしか処理できない実装は、5号機分の理論生産数
+[BR-3]に対して生成数が大幅に不足するバグの原因だったため、この方式に変更した)
+"""
 from __future__ import annotations
 
 import random
@@ -22,44 +28,57 @@ MIN_PROCESSING_SECONDS = 60
 
 
 class UnitAssignmentTracker:
-    """加工機タイプごとに号機(1〜5)の割当回数を管理し、均等配分する(BR-9)。"""
+    """加工機タイプごとに号機(1〜5)の割当回数と、次に利用可能になる時刻を管理する(BR-9)。"""
 
-    def __init__(self) -> None:
+    def __init__(self, initial_available: datetime) -> None:
         self._counts = {machine: {unit: 0 for unit in UNIT_NUMBERS} for machine in MACHINE_TYPES}
+        self._next_available = {
+            machine: {unit: initial_available for unit in UNIT_NUMBERS} for machine in MACHINE_TYPES
+        }
 
     def assign_unit(self, machine_name: str) -> int:
+        """割当回数が均等になるよう号機を選ぶ。回数が同じ号機が複数あれば、最も早く空く号機を優先する。"""
         counts = self._counts[machine_name]
         min_count = min(counts.values())
         candidates = [unit for unit, count in counts.items() if count == min_count]
-        chosen = random.choice(candidates)
+        chosen = min(candidates, key=lambda unit: self._next_available[machine_name][unit])
         counts[chosen] += 1
         return chosen
+
+    def available_at(self, machine_name: str, unit_number: int) -> datetime:
+        return self._next_available[machine_name][unit_number]
+
+    def earliest_available(self, machine_name: str) -> datetime:
+        return min(self._next_available[machine_name].values())
+
+    def mark_busy_until(self, machine_name: str, unit_number: int, until: datetime) -> None:
+        self._next_available[machine_name][unit_number] = until
 
 
 def generate_product_chains(window: ExecutionWindow, target_chain_count: int) -> list[ProductChain]:
     """理論上限内でtarget_chain_count件を上限にProductChainを生成する。
 
-    実行窓をまたぐチェーンは生成しない(BR-6): 残り時間が
+    加工機タイプごとに5号機が並行稼働するため、複数のチェーンが同時進行しうる(BR-9)。
+    実行窓をまたぐチェーンは生成しない(BR-6): 新規チェーンの開始時点で、残り時間が
     標準加工時間合計+安全マージンに満たない場合は生成を打ち切る。
     """
     chains: list[ProductChain] = []
     if target_chain_count <= 0 or window.is_holiday:
         return chains
 
-    tracker = UnitAssignmentTracker()
-    cursor = window.earliest_start
+    tracker = UnitAssignmentTracker(window.earliest_start)
     sequence = 0
 
     while len(chains) < target_chain_count:
-        cursor = _advance_past_break_time(cursor, window.window_end)
-        remaining_seconds = (window.window_end - cursor).total_seconds()
+        start_cursor = _advance_past_break_time(tracker.earliest_available("A"), window.window_end)
+        remaining_seconds = (window.window_end - start_cursor).total_seconds()
 
         if remaining_seconds < TOTAL_STANDARD_SECONDS + SAFETY_MARGIN_SECONDS:
             break  # BR-6: 残り時間不足のため、この窓でのチェーン生成を終了する
 
         sequence += 1
         base_product_id = _generate_base_product_id(window.window_start, sequence)
-        chain, cursor = _build_chain(base_product_id, cursor, window.window_end, tracker)
+        chain = _build_chain(base_product_id, start_cursor, window.window_end, tracker)
         chains.append(chain)
 
     return chains
@@ -70,27 +89,29 @@ def _build_chain(
     start_cursor: datetime,
     window_end: datetime,
     tracker: UnitAssignmentTracker,
-) -> tuple[ProductChain, datetime]:
+) -> ProductChain:
     chain = ProductChain(base_product_id=base_product_id)
-    cursor = start_cursor
+    cursor = start_cursor  # このチェーン自身の進行位置(前工程の完了時刻)
 
     for machine_name in MACHINE_TYPES:
-        cursor = _advance_past_break_time(cursor, window_end)
+        unit_number = tracker.assign_unit(machine_name)
+        stage_start = _advance_past_break_time(max(cursor, tracker.available_at(machine_name, unit_number)), window_end)
 
         duration_seconds = _draw_processing_duration(machine_name)
-        completion = cursor + timedelta(seconds=duration_seconds)
+        completion = stage_start + timedelta(seconds=duration_seconds)
 
         if completion > window_end:
             # BR-7: 設備停止等で窓を超える場合は残り時間にクリップする
             completion = window_end
-            duration_seconds = max(int((completion - cursor).total_seconds()), 1)
+            duration_seconds = max(int((completion - stage_start).total_seconds()), 1)
 
-        unit_number = tracker.assign_unit(machine_name)
+        tracker.mark_busy_until(machine_name, unit_number, completion)
+
         record = ProcessingRecord(
             product_number=f"{base_product_id}{machine_name}",
             machine_name=machine_name,
             machine_number=unit_number,
-            processing_start_time=cursor,
+            processing_start_time=stage_start,
             processing_completion_time=completion,
             sum_datetime=duration_seconds,
             pass_judgment="NG" if random.random() < NG_RATE else "OK",
@@ -98,7 +119,7 @@ def _build_chain(
         chain.stages.append(record)
         cursor = completion
 
-    return chain, cursor
+    return chain
 
 
 def _draw_processing_duration(machine_name: str) -> int:

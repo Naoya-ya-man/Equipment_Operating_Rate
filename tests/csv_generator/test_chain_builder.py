@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from src.csv_generator.chain_builder import UnitAssignmentTracker, generate_product_chains
 from src.csv_generator.config import MACHINE_TYPES
@@ -61,9 +61,28 @@ def test_generate_product_chains_stops_when_not_enough_time_remains():
 
 
 def test_unit_assignment_tracker_balances_across_units():
-    tracker = UnitAssignmentTracker()
+    tracker = UnitAssignmentTracker(datetime(2026, 7, 7, 0, 0))
     for _ in range(50):
         tracker.assign_unit("A")
 
     counts = tracker._counts["A"].values()
     assert max(counts) - min(counts) <= 1
+
+
+def test_generate_product_chains_uses_five_units_in_parallel():
+    # 直列(1本のライン相当)では130分/チェーンとして最大4〜5件しか作れないが、
+    # 5号機が並行稼働すれば、12時間の窓でその5倍近くまで生成できるはずである。
+    window = _make_window()
+    chains = generate_product_chains(window, target_chain_count=20)
+
+    assert len(chains) >= 15  # 直列実装(4〜5件)を大幅に上回ることを確認
+
+
+def test_generate_product_chains_allows_overlapping_chains_on_different_units():
+    window = _make_window()
+    chains = generate_product_chains(window, target_chain_count=5)
+
+    a_stage_starts = sorted(chain.stages[0].processing_start_time for chain in chains)
+    # 直列実装なら次のチェーンのA開始は前のチェーンの完了(約130分後)まで来ないはずだが、
+    # 並行実装ではA号機が5台あるため、もっと早い間隔で複数チェーンが開始できる
+    assert a_stage_starts[-1] - a_stage_starts[0] < timedelta(minutes=130)
