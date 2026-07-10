@@ -355,3 +355,11 @@
 **Context**: First real-world deployment validation of the demo dashboard surfaced a display bug specific to static pre-generated data
 
 ---
+
+## Feature Addition - Automated Demo Data Refresh (GitHub-hosted Runner)
+**Timestamp**: 2026-07-10T00:00:01Z
+**User Input**: ユーザーが「デモをリアルタイムで更新したい、自動実行はしていないのか」と質問。
+**AI Response**: デモデータ生成は実SSMSに依存しない自己完結型処理であるため、本番と異なりGitHubのホスト型ランナー(PCの電源状態に依存しない)で定期実行可能と判断。`.github/workflows/refresh-demo-data.yml`を新規作成(毎日UTC18:00=JST3:00、`workflow_dispatch`併設)。pyodbc遅延import化の効果で`pip install`なしでも動作することをクリーンな仮想環境で検証済み。プッシュされるとStreamlit Community Cloudが自動再デプロイする。
+**Context**: Feature addition — leverages the fact that demo generation is fully self-contained (stdlib-only), unlike the production pipeline which requires the local self-hosted runner
+
+---

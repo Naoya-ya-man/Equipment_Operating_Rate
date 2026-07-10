@@ -40,3 +40,8 @@
 Streamlit Community Cloudへの実デプロイ後、日別グラフの末尾（当日分）が0になる事象が発生した。原因は、`app.py`がグラフの基準日として実際のカレンダー上の「今日」(`date.today()`)を使っていたため。デモデータは静的な事前生成データであり、生成日以降の日付にはデータが存在しないため、閲覧するタイミングによっては末尾が空白/0になってしまう。
 
 `src/demo/calculator.py`に`get_latest_data_date()`（デモDB内の`MAX(Processing_Start_Time)`を返す）を追加し、`app.py`側の基準日をこれに置き換えることで、閲覧タイミングに関わらず常にデータが揃った状態で表示されるように修正した。テスト1件追加、pytest 74件全てPASS。
+
+## 自動更新の追加（2026-07-10）
+ユーザーから「デモをリアルタイムに更新したい」との要望。デモデータ生成(`src/demo/generate_demo_data.py`)は実SSMSに一切依存しない自己完結型のPython処理（依存パッケージも標準ライブラリのみ。`pyodbc`遅延import化の効果で、`db_loader`パッケージのimport自体もpyodbc未インストール環境で動作することをクリーンな仮想環境で検証済み）であるため、本番と異なり**GitHubのホスト型ランナー**（PCの電源状態に依存しない）で定期実行できる。
+
+`.github/workflows/refresh-demo-data.yml` を追加: 毎日UTC 18:00(JST 3:00)に`generate_demo_data`を再実行し、`demo_data.db`が変化していればコミット・プッシュする。プッシュされるとStreamlit Community Cloud側が自動的に再デプロイし、常に最新（直近90日分）のデモデータが表示され続ける。`workflow_dispatch`も併設し手動実行も可能。

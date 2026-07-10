@@ -23,3 +23,14 @@ GitHub Actionsの`schedule`はUTCで解釈されるため、JST 0:00/12:00に実
 ## 実運用に向けた注意点
 - Self-hosted Runnerのセットアップ（GitHubリポジトリへの登録、サービス化）はユーザー側の作業として残っている
 - 実際のSSMS接続・実際のGitHub Actions実行環境での動作確認はこの開発環境では未検証
+
+## 【実環境での初回実行で発見・修正】`shell: pwsh` が使えない（2026-07-08）
+ユーザーがSelf-hosted Runnerをセットアップし、実際にワークフローを実行したところ、以下のエラーで失敗した:
+```
+Error: pwsh: command not found
+```
+**原因**: `scheduled-pipeline.yml` の各ステップで `shell: pwsh`（PowerShell 7/Core）を指定していたが、ユーザーのPCにはPowerShell 7がインストールされておらず、標準搭載のWindows PowerShell（`powershell.exe`、5.1系）のみが存在していた。開発環境ではワークフローYAML自体の実行検証（実際にRunner上で動かす）ができなかったため、この不一致は検出できなかった。
+
+**修正内容**: `scheduled-pipeline.yml` の3ステップ全ての `shell: pwsh` を `shell: powershell`（Windows PowerShell 5.1、全Windows環境に標準搭載）に変更。スクリプトの記述内容自体はPowerShell 5.1でもそのまま動作するため、他の変更は不要だった。
+
+修正後、ユーザー環境での再実行による確認が次のステップ。

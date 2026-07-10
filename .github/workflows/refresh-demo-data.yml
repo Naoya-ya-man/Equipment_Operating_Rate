@@ -1,0 +1,35 @@
+name: Refresh Demo Data
+
+on:
+  schedule:
+    # 毎日 UTC 18:00 (JST 3:00) に実行。デモ用データを最新の日付まで再生成する。
+    - cron: "0 18 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-demo-data:
+    # デモデータ生成は実SSMSに依存しない自己完結型の処理のため、
+    # 本番用と異なりGitHub提供のホスト型ランナーで実行できる(PCの電源状態に依存しない)。
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Generate demo data
+        run: python -m src.demo.generate_demo_data
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/demo/demo_data.db
+          git diff --staged --quiet || git commit -m "Refresh demo data (automated)"
+          git push
