@@ -48,3 +48,8 @@ def test_aggregate_by_machine_type_is_reexported_from_real_calculator():
     from src.utilization.calculator import aggregate_by_machine_type as real_aggregate
 
     assert calculator.aggregate_by_machine_type is real_aggregate
+
+
+def test_get_latest_data_date_returns_max_date_in_demo_db(demo_db):
+    # 2026-07-06~2026-07-08の3日間を生成したので、最新日付は7/8のはず
+    assert calculator.get_latest_data_date() == date(2026, 7, 8)

@@ -31,6 +31,7 @@ from src.dashboard.config import (
     MIN_MONTHLY_MONTHS,
     MIN_WEEKLY_WEEKS,
 )
+from src.demo.calculator import get_latest_data_date
 from src.demo.data_service import (
     build_daily_comparison,
     build_daily_trend,
@@ -52,7 +53,7 @@ if not DEMO_DB_PATH.exists():
 granularity_label = st.radio("表示粒度", ["号機別", "加工機タイプ別"], horizontal=True)
 granularity = "unit" if granularity_label == "号機別" else "machine_type"
 
-today = date.today()
+today = get_latest_data_date()
 
 try:
     daily_days = st.slider("日別トレンド期間(日)", MIN_DAILY_DAYS, MAX_DAILY_DAYS, DEFAULT_DAILY_DAYS)

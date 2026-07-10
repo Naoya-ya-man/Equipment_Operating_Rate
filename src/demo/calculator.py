@@ -31,6 +31,25 @@ GROUP BY Machine_Name, Machine_Number
 """.strip()
 
 
+def get_latest_data_date() -> date:
+    """デモDBに含まれる最新のデータ日付を返す。
+
+    デモは静的な事前生成データのため、カレンダー上の「今日」を基準に表示すると
+    データ生成日以降は空白になってしまう。そのため、表示の基準日には実際の
+    カレンダー日ではなくこの値を使う(常にデータがある状態で表示するため)。
+    """
+    connection = sqlite3.connect(DEMO_DB_PATH)
+    try:
+        cursor = connection.cursor()
+        cursor.execute(f"SELECT MAX(Processing_Start_Time) FROM {TABLE_NAME}")
+        result = cursor.fetchone()[0]
+        if result is None:
+            return date.today()
+        return datetime.fromisoformat(result).date()
+    finally:
+        connection.close()
+
+
 def get_daily_utilization(target_date: date) -> list[UtilizationRow]:
     """対象日の号機別(25件)日別稼働率(実績+想定)を算出する。"""
     planned_seconds = get_planned_seconds(target_date)

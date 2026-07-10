@@ -315,3 +315,43 @@
 **Context**: Post-Build-and-Test — Real-world validation surfaced a gap between the assumed and actual SSMS schema (a known risk flagged throughout UOW-2/3 documentation: real DB connectivity was never exercised in the dev sandbox)
 
 ---
+
+## Real Environment Testing - GitHub Actions Self-hosted Runner Setup & pwsh Shell Bug
+**Timestamp**: 2026-07-08T00:00:00Z
+**User Input**: ユーザーがSelf-hosted Runnerのセットアップ(ダウンロード・config.cmd・サービス登録)を実施。手動実行・スケジュール実行とも失敗。ログを確認したところ「Error: pwsh: command not found」というエラーを発見・共有。
+**AI Response**: `.github/workflows/scheduled-pipeline.yml` の各ステップが `shell: pwsh`(PowerShell 7/Core、未インストール)を指定していたことが原因と判明。`shell: powershell`(Windows標準搭載のPowerShell 5.1)に修正。長時間(2〜20時間)かかっていた他の失敗ランは、Runnerセットアップ前のキュー待ち、またはスリープによるハングが原因と推定(ユーザーは既にスリープ無効化を設定済み)。
+**Context**: Post-Build-and-Test — Real-world GitHub Actions execution surfaced a second gap (workflow YAML shell assumption) that couldn't be caught in the dev sandbox
+
+---
+
+## Real Environment Testing - Serial-Generation Bug in CsvGenerator (Major Fix)
+**Timestamp**: 2026-07-09T00:00:00Z
+**User Input**: ユーザーが「実行はできているのに日別稼働率が10%にも届かない、号機が多いからか、それともランダム投入が少なすぎるのか」と指摘。
+**AI Response**: `src/csv_generator/chain_builder.py`を調査した結果、重大なバグを発見: BR-3の理論生産数は5号機の並行稼働を前提に算出していたが、実際の生成ロジック(`generate_product_chains`)は1つのチェーン(A→B→C→D→E、約130分)が完了するまで次のチェーンを開始しない直列実装になっており、12時間窓で最大4〜5チェーンしか生成できていなかった(理論値60〜80チェーンを大幅に下回る)。`UnitAssignmentTracker`が号機ごとの「次に利用可能な時刻」を個別管理する方式に全面書き換え、真の5号機並行稼働を実現。修正後のシミュレーションで日別稼働率が加工機A:30%/B:45%/C(ボトルネック):63%/D:39%/E:21%まで改善(修正前は全て10%未満)。functional-design(BR-6, BR-9)・code READMEを更新。テスト2件追加、pytest 62件全PASS。
+**Context**: Post-Build-and-Test — User-observed anomaly (implausibly low utilization) led to discovery of a core algorithm bug, not just a deployment/config issue like the previous two findings
+
+---
+
+## Feature Addition - Actual vs Expected Comparison Table
+**Timestamp**: 2026-07-09T00:00:01Z
+**User Input**: ユーザーが「想定稼働率の理論上の算出方法と、それに対する実績が号機・加工機ごとにわかる表を追加してほしい」と要望。
+**AI Response**: `UtilizationRow`/`MachineTypeUtilizationRow`に`processed_count`/`expected_utilization_rate`を追加し、日別・月別でも週別(BR-5)と同様の想定稼働率を算出できるように`calculator.py`を拡張。`data_service.py`に`build_daily_comparison`/`build_weekly_comparison`/`build_monthly_comparison`を追加。`app.py`に期間選択(直近1日/1週間/1ヶ月)付きの比較表セクションを追加。実データで動作確認済み(pyodbc経由で実際にSSMSへ接続し取得できることを確認)。テスト3件追加、pytest 65件全てPASS。UOW-3/UOW-4のbusiness-rules.mdを更新。
+**Context**: Feature addition requested by user, benefits both production dashboard and future portfolio demo
+
+---
+
+## Feature Addition - Portfolio Demo Dashboard (SQLite, Streamlit Community Cloud)
+**Timestamp**: 2026-07-09T00:00:02Z
+**User Input**: ユーザーが副業アピール用のポートフォリオとして、常時アクセス可能な公開URLを求めた（PCの電源状態に依存したくない）。実際のSSMSはローカルにしかないため、DBの代わりにサンプルデータで動くデモ版を別途用意する方針で合意。
+**AI Response**: 新規パッケージ`src/demo/`を作成。`generate_demo_data.py`(CsvGeneratorのロジックを再利用し90日分の疑似データをSQLiteに生成)、`calculator.py`(SQLite版クエリ層、集計ロジックは本番のものを再利用)、`data_service.py`、`app.py`(デモ専用Streamlitエントリーポイント)を実装。副次的に、Streamlit Community Cloud(Linux)でのpyodbc未導入環境を考慮し、`db_loader`/`utilization`の`connection.py`でpyodbcのimportを遅延化(関数内import)。テスト8件追加、pytest 73件全てPASS。事前生成したdemo_data.db(90日分、約2.8MB)をリポジトリに同梱。デプロイ手順を`aidlc-docs/construction/demo-dashboard/README.md`に記載。
+**Context**: Feature addition — separate from production, zero risk to the real pipeline
+
+---
+
+## Real Deployment Testing - Demo Dashboard Trailing-Zero Bug
+**Timestamp**: 2026-07-10T00:00:00Z
+**User Input**: ユーザーが実際にStreamlit Community Cloudへデプロイ成功。日別グラフのスクリーンショットを共有し「今日は実行できていないのか」と質問。
+**AI Response**: グラフ末尾(当日分)が0になっていた原因は、`app.py`がカレンダー上の実際の「今日」を基準日にしていたため(デモデータは静的な事前生成データで、生成日以降は存在しない)。`get_latest_data_date()`(デモDB内の最新日付を返す)を追加し、基準日をそれに置き換え。テスト1件追加、pytest 74件全てPASS。
+**Context**: First real-world deployment validation of the demo dashboard surfaced a display bug specific to static pre-generated data
+
+---
