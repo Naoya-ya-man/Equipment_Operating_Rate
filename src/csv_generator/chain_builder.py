@@ -96,6 +96,11 @@ def _build_chain(
     for machine_name in MACHINE_TYPES:
         unit_number = tracker.assign_unit(machine_name)
         stage_start = _advance_past_break_time(max(cursor, tracker.available_at(machine_name, unit_number)), window_end)
+        # BR-6: stage_startがwindow_endちょうど(=次の実行窓の最初の瞬間)になると、
+        # このレコードの日付が実行窓と異なる日にずれてしまうため、最終手段として
+        # window_endの1秒前を上限にする(通常は外側ループの残り時間チェックで
+        # ここまで到達しないが、号機の混雑状況によっては起こりうる境界ケース)。
+        stage_start = min(stage_start, window_end - timedelta(seconds=1))
 
         duration_seconds = _draw_processing_duration(machine_name)
         completion = stage_start + timedelta(seconds=duration_seconds)

@@ -363,3 +363,19 @@
 **Context**: Feature addition — leverages the fact that demo generation is fully self-contained (stdlib-only), unlike the production pipeline which requires the local self-hosted runner
 
 ---
+
+## Documentation Deliverable - System Overview / Specification (PDF)
+**Timestamp**: 2026-07-10T00:00:02Z
+**User Input**: ユーザーが「全体的に何がどうなっているのかがまとまっていない。要件定義書・仕様書のようなものをフォルダにPDFか何かで作ってほしい。画面の見方・SQLiteの問い合わせ方法もこの場で説明してほしい」と依頼。
+**AI Response**: `docs/システム概要・仕様書.md`を新規作成(全9章: システム概要、本番システム、デモシステム、SQLite問い合わせ方法、コンポーネント一覧、稼働率算出方法、発見・修正した問題一覧、ディレクトリ構成、用語集)。PDF化を試行し、xhtml2pdfライブラリでは日本語(CJK)フォントが正しく埋め込まれない既知の問題を発見(tofu box表示)。reportlab Platypusを直接使う自作コンバータ(`docs/generate_spec_pdf.py`)に切り替え、Windows標準搭載のMeiryoフォント(.ttcコレクション)をfontToolsで単一.ttfとして抽出したうえで登録することで解決。PyMuPDFで実際にページを画像化して視覚的に確認しながら調整。`docs/requirements-docs.txt`にPDF生成専用の依存関係を分離。
+**Context**: Documentation deliverable — separate from application code, addresses user's request for a consolidated reference document
+
+---
+
+## Bug Fix - Flaky Window-Boundary Date Attribution + README
+**Timestamp**: 2026-07-12T00:00:00Z
+**User Input**: ユーザーがREADMEの作成を依頼。作業中に`pytest`をフルスイートで実行したところ、`tests/demo/test_calculator.py::test_get_latest_data_date_returns_max_date_in_demo_db`が1回だけ失敗(74件中1件)。
+**AI Response**: 調査の結果、ごく低確率で工程の開始時刻(`processing_start_time`)が実行窓の終端(`window_end`)ちょうど（＝翌日0時）になり、日付集計が1日ずれるflaky（ランダム依存）バグを発見。`chain_builder.py`の`_build_chain`で、`stage_start`を`window_end`の1秒前を上限にクリップするよう修正。修正後、同テストと`tests/csv_generator`を20回連続実行して安定することを確認。プロジェクトルートに`README.md`(ポートフォリオ・採用担当者向けの公開用説明)を新規作成。
+**Context**: Bug fix discovered incidentally while doing documentation work — a good reminder to always run the full test suite (not just the changed area) before considering work done
+
+---
